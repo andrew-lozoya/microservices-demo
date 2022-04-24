@@ -15,6 +15,7 @@
  */
 
 'use strict';
+const newrelic = require('newrelic');
 
 const path = require('path');
 const HipsterShopServer = require('./server');
