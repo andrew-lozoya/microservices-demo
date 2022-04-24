@@ -13,3 +13,4 @@ pkg/
 release/kubernetes-manifests.yaml
 *.code-workspace
 NOTES
+release/kubernetes-manifests.yaml
