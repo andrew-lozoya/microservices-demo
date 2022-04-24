@@ -8,7 +8,8 @@ pkg/
 .vs/
 .idea
 .skaffold-*.yaml
-.kubernetes-manifests-*/
 .project
 .eclipse.buildship.core.prefs
-release/wi-kubernetes-manifests.yaml
+release/kubernetes-manifests.yaml
+*.code-workspace
+NOTES

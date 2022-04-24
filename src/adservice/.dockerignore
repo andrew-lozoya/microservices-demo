@@ -1,0 +1,9 @@
+Dockerfile*
+.gitignore
+README.md
+*.iml
+*.ipr
+*.iws
+.gradle/**
+.idea/**
+build/**
