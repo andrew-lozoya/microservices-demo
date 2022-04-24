@@ -89,11 +89,12 @@ func main() {
 		log.Fatal(err)
 	}
 
+	var srv *grpc.Server
 	nrgrpc.Configure(
 		nrgrpc.WithStatusHandler(codes.DeadlineExceeded, nrgrpc.ErrorInterceptorStatusHandler),
 		nrgrpc.WithStatusHandler(codes.NotFound, nrgrpc.WarningInterceptorStatusHandler))
 	
-	srv := grpc.NewServer(
+	srv = grpc.NewServer(
 		grpc.UnaryInterceptor(nrgrpc.UnaryServerInterceptor(app)),
 		grpc.StreamInterceptor(nrgrpc.StreamServerInterceptor(app)))
 
@@ -286,7 +287,12 @@ func (cs *checkoutService) prepareOrderItemsAndShippingQuoteFromCart(ctx context
 func (cs *checkoutService) quoteShipping(ctx context.Context, address *pb.Address, items []*pb.CartItem) (*pb.Money, error) {
 	txn := newrelic.FromContext(ctx)
 	defer txn.StartSegment("quoteShipping").End()
-	conn, err := grpc.DialContext(ctx, cs.shippingSvcAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+
+	conn, err := grpc.DialContext(ctx, cs.shippingSvcAddr, 
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithUnaryInterceptor(nrgrpc.UnaryClientInterceptor),
+		grpc.WithStreamInterceptor(nrgrpc.StreamClientInterceptor),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("could not connect shipping service: %+v", err)
 	}
@@ -305,7 +311,12 @@ func (cs *checkoutService) quoteShipping(ctx context.Context, address *pb.Addres
 func (cs *checkoutService) getUserCart(ctx context.Context, userID string) ([]*pb.CartItem, error) {
 	txn := newrelic.FromContext(ctx)
 	defer txn.StartSegment("getUserCart").End()
-	conn, err := grpc.DialContext(ctx, cs.cartSvcAddr, grpc.WithTransportCredentials(insecure.NewCredentials() ))
+
+	conn, err := grpc.DialContext(ctx, cs.cartSvcAddr, 
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithUnaryInterceptor(nrgrpc.UnaryClientInterceptor),
+		grpc.WithStreamInterceptor(nrgrpc.StreamClientInterceptor),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("could not connect cart service: %+v", err)
 	}
@@ -321,7 +332,12 @@ func (cs *checkoutService) getUserCart(ctx context.Context, userID string) ([]*p
 func (cs *checkoutService) emptyUserCart(ctx context.Context, userID string) error {
 	txn := newrelic.FromContext(ctx)
 	defer txn.StartSegment("emptyUserCart").End()
-	conn, err := grpc.DialContext(ctx, cs.cartSvcAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+
+	conn, err := grpc.DialContext(ctx, cs.cartSvcAddr, 
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithUnaryInterceptor(nrgrpc.UnaryClientInterceptor),
+		grpc.WithStreamInterceptor(nrgrpc.StreamClientInterceptor),
+	)
 	if err != nil {
 		return fmt.Errorf("could not connect cart service: %+v", err)
 	}
@@ -339,7 +355,11 @@ func (cs *checkoutService) prepOrderItems(ctx context.Context, items []*pb.CartI
 	defer txn.StartSegment("prepOrderItems").End()
 	out := make([]*pb.OrderItem, len(items))
 
-	conn, err := grpc.DialContext(ctx, cs.productCatalogSvcAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.DialContext(ctx, cs.productCatalogSvcAddr,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithUnaryInterceptor(nrgrpc.UnaryClientInterceptor),
+		grpc.WithStreamInterceptor(nrgrpc.StreamClientInterceptor),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("could not connect product catalog service: %+v", err)
 	}
@@ -365,7 +385,12 @@ func (cs *checkoutService) prepOrderItems(ctx context.Context, items []*pb.CartI
 func (cs *checkoutService) convertCurrency(ctx context.Context, from *pb.Money, toCurrency string) (*pb.Money, error) {
 	txn := newrelic.FromContext(ctx)
 	defer txn.StartSegment("convertCurrency").End()
-	conn, err := grpc.DialContext(ctx, cs.currencySvcAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+
+	conn, err := grpc.DialContext(ctx, cs.currencySvcAddr,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithUnaryInterceptor(nrgrpc.UnaryClientInterceptor),
+		grpc.WithStreamInterceptor(nrgrpc.StreamClientInterceptor),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("could not connect currency service: %+v", err)
 	}
@@ -382,7 +407,12 @@ func (cs *checkoutService) convertCurrency(ctx context.Context, from *pb.Money, 
 func (cs *checkoutService) chargeCard(ctx context.Context, amount *pb.Money, paymentInfo *pb.CreditCardInfo) (string, error) {
 	txn := newrelic.FromContext(ctx)
 	defer txn.StartSegment("chargeCard").End()
-	conn, err := grpc.DialContext(ctx, cs.paymentSvcAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+
+	conn, err := grpc.DialContext(ctx, cs.paymentSvcAddr,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithUnaryInterceptor(nrgrpc.UnaryClientInterceptor),
+		grpc.WithStreamInterceptor(nrgrpc.StreamClientInterceptor),
+	)
 	if err != nil {
 		return "", fmt.Errorf("failed to connect payment service: %+v", err)
 	}
@@ -400,7 +430,11 @@ func (cs *checkoutService) chargeCard(ctx context.Context, amount *pb.Money, pay
 func (cs *checkoutService) sendOrderConfirmation(ctx context.Context, email string, order *pb.OrderResult) error {
 	txn := newrelic.FromContext(ctx)
 	defer txn.StartSegment("sendOrderConfirmation").End()
-	conn, err := grpc.DialContext(ctx, cs.emailSvcAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.DialContext(ctx, cs.emailSvcAddr,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithUnaryInterceptor(nrgrpc.UnaryClientInterceptor),
+		grpc.WithStreamInterceptor(nrgrpc.StreamClientInterceptor),
+	)
 	if err != nil {
 		return fmt.Errorf("failed to connect email service: %+v", err)
 	}
@@ -414,7 +448,12 @@ func (cs *checkoutService) sendOrderConfirmation(ctx context.Context, email stri
 func (cs *checkoutService) shipOrder(ctx context.Context, address *pb.Address, items []*pb.CartItem) (string, error) {
 	txn := newrelic.FromContext(ctx)
 	defer txn.StartSegment("shipOrder").End()
-	conn, err := grpc.DialContext(ctx, cs.shippingSvcAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	
+	conn, err := grpc.DialContext(ctx, cs.shippingSvcAddr,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithUnaryInterceptor(nrgrpc.UnaryClientInterceptor),
+		grpc.WithStreamInterceptor(nrgrpc.StreamClientInterceptor),
+	)
 	if err != nil {
 		return "", fmt.Errorf("failed to connect email service: %+v", err)
 	}
