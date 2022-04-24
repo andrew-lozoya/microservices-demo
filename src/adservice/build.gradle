@@ -1,6 +1,7 @@
 plugins {
     id 'com.google.protobuf' version '0.8.18'
     id 'com.github.sherter.google-java-format' version '0.9'
+    id "de.undercouch.download" version "3.4.3"
     id 'idea'
     id 'application'
 }
@@ -14,10 +15,10 @@ description = 'Ad Service'
 group = "adservice"
 version = "0.1.0-SNAPSHOT"
 
-def opencensusVersion = "0.27.0"
 def grpcVersion = "1.32.1"
 def jacksonVersion = "2.12.1"
 def protocVersion = "3.12.3"
+def newrelicVersion = "7.6.0"
 
 tasks.withType(JavaCompile) {
     sourceCompatibility = JavaVersion.VERSION_1_8
@@ -34,13 +35,6 @@ dependencies {
         implementation fileTree(dir: offlineCompile, include: '*.jar')
     } else {
         implementation "com.google.api.grpc:proto-google-common-protos:1.18.1",
-                "io.opencensus:opencensus-api:${opencensusVersion}",
-                "io.opencensus:opencensus-contrib-grpc-metrics:${opencensusVersion}",
-                "io.opencensus:opencensus-contrib-grpc-util:${opencensusVersion}",
-                "io.opencensus:opencensus-exporter-trace-jaeger:${opencensusVersion}",
-                "io.opencensus:opencensus-exporter-stats-stackdriver:${opencensusVersion}",
-                "io.opencensus:opencensus-exporter-trace-stackdriver:${opencensusVersion}",
-                "io.opencensus:opencensus-exporter-trace-logging:${opencensusVersion}",
                 "io.grpc:grpc-protobuf:${grpcVersion}",
                 "io.grpc:grpc-stub:${grpcVersion}",
                 "io.grpc:grpc-netty:${grpcVersion}",
@@ -50,8 +44,6 @@ dependencies {
 
         runtimeOnly "com.fasterxml.jackson.core:jackson-core:${jacksonVersion}",
                 "com.fasterxml.jackson.core:jackson-databind:${jacksonVersion}",
-                "io.opencensus:opencensus-contrib-log-correlation-log4j2:${opencensusVersion}",
-                "io.opencensus:opencensus-impl:${opencensusVersion}",
                 "io.netty:netty-tcnative-boringssl-static:2.0.51.Final"
     }
 }
@@ -99,14 +91,25 @@ task downloadRepos(type: Copy) {
     into offlineCompile
 }
 
+task downloadNewrelic(type: Download) {
+    mkdir 'newrelic'
+    src "https://download.newrelic.com/newrelic/java-agent/newrelic-agent/${newrelicVersion}/newrelic-java.zip"
+    dest file('newrelic')
+}
+
+task unzipNewrelic(type: Copy) {
+    from zipTree(file('newrelic/newrelic-java.zip'))
+    into rootDir
+}
+
 task adService(type: CreateStartScripts) {
     mainClassName = 'hipstershop.AdService'
     applicationName = 'AdService'
     outputDir = new File(project.buildDir, 'tmp')
     classpath = startScripts.classpath
     defaultJvmOpts =
-            ["-Dlog4j2.contextDataInjector=io.opencensus.contrib.logcorrelation.log4j2.OpenCensusTraceContextDataInjector",
-             "-agentpath:/opt/cprof/profiler_java_agent.so=-cprof_service=adservice,-cprof_service_version=1.0.0"]
+            ["-javaagent:/app/newrelic/newrelic.jar", "-Dnewrelic.config.application_logging.enabled=true",
+             "-Dnewrelic.config.application_logging.forwarding.enabled=false", "-Dnewrelic.config.application_logging.local_decorating.enabled=true"]
 }
 
 task adServiceClient(type: CreateStartScripts) {
@@ -115,8 +118,8 @@ task adServiceClient(type: CreateStartScripts) {
     outputDir = new File(project.buildDir, 'tmp')
     classpath = startScripts.classpath
     defaultJvmOpts =
-            ["-Dlog4j2.contextDataInjector=io.opencensus.contrib.logcorrelation.log4j2.OpenCensusTraceContextDataInjector",
-             "-agentpath:/opt/cprof/profiler_java_agent.so=-cprof_service=adserviceclient,-cprof_service_version=1.0.0"]
+            ["-javaagent:/app/newrelic/newrelic.jar", "-Dnewrelic.config.application_logging.enabled=true",
+             "-Dnewrelic.config.application_logging.forwarding.enabled=false", "-Dnewrelic.config.application_logging.local_decorating.enabled=true"]
 }
 
 applicationDistribution.into('bin') {

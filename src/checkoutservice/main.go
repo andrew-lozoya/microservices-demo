@@ -19,19 +19,17 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"time"
 
-	"cloud.google.com/go/profiler"
-	"contrib.go.opencensus.io/exporter/jaeger"
-	"contrib.go.opencensus.io/exporter/stackdriver"
 	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
-	"go.opencensus.io/plugin/ocgrpc"
-	"go.opencensus.io/stats/view"
-	"go.opencensus.io/trace"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
+
+	nrlogrusplugin "github.com/newrelic/go-agent/v3/integrations/logcontext/nrlogrusplugin"
+	nrgrpc "github.com/newrelic/go-agent/v3/integrations/nrgrpc"
+	newrelic "github.com/newrelic/go-agent/v3/newrelic"
 
 	pb "github.com/GoogleCloudPlatform/microservices-demo/src/checkoutservice/genproto"
 	money "github.com/GoogleCloudPlatform/microservices-demo/src/checkoutservice/money"
@@ -47,15 +45,8 @@ var log *logrus.Logger
 
 func init() {
 	log = logrus.New()
-	log.Level = logrus.DebugLevel
-	log.Formatter = &logrus.JSONFormatter{
-		FieldMap: logrus.FieldMap{
-			logrus.FieldKeyTime:  "timestamp",
-			logrus.FieldKeyLevel: "severity",
-			logrus.FieldKeyMsg:   "message",
-		},
-		TimestampFormat: time.RFC3339Nano,
-	}
+	log.SetFormatter(nrlogrusplugin.ContextFormatter{})
+	log.SetLevel(logrus.TraceLevel)
 	log.Out = os.Stdout
 }
 
@@ -69,19 +60,14 @@ type checkoutService struct {
 }
 
 func main() {
-	if os.Getenv("DISABLE_TRACING") == "" {
-		log.Info("Tracing enabled.")
-		go initTracing()
-	} else {
-		log.Info("Tracing disabled.")
-	}
-
-	if os.Getenv("DISABLE_PROFILER") == "" {
-		log.Info("Profiling enabled.")
-		go initProfiling("checkoutservice", "1.0.0")
-	} else {
-		log.Info("Profiling disabled.")
-	}
+	app, _ := newrelic.NewApplication(
+		newrelic.ConfigAppName(os.Getenv("NEW_RELIC_APP_NAME")),
+		newrelic.ConfigLicense(os.Getenv("NEW_RELIC_LICENSE_KEY")),
+		func(config *newrelic.Config) {
+			// add more specific configuration of the agent within a custom ConfigOption
+			config.DistributedTracer.Enabled = true
+		},
+	)
 
 	port := listenPort
 	if os.Getenv("PORT") != "" {
@@ -103,100 +89,19 @@ func main() {
 		log.Fatal(err)
 	}
 
-	var srv *grpc.Server
-	if os.Getenv("DISABLE_STATS") == "" {
-		log.Info("Stats enabled.")
-		srv = grpc.NewServer(grpc.StatsHandler(&ocgrpc.ServerHandler{}))
-	} else {
-		log.Info("Stats disabled.")
-		srv = grpc.NewServer()
-	}
+	nrgrpc.Configure(
+		nrgrpc.WithStatusHandler(codes.DeadlineExceeded, nrgrpc.ErrorInterceptorStatusHandler),
+		nrgrpc.WithStatusHandler(codes.NotFound, nrgrpc.WarningInterceptorStatusHandler))
+	
+	srv := grpc.NewServer(
+		grpc.UnaryInterceptor(nrgrpc.UnaryServerInterceptor(app)),
+		grpc.StreamInterceptor(nrgrpc.StreamServerInterceptor(app)))
+
 	pb.RegisterCheckoutServiceServer(srv, svc)
 	healthpb.RegisterHealthServer(srv, svc)
 	log.Infof("starting to listen on tcp: %q", lis.Addr().String())
 	err = srv.Serve(lis)
 	log.Fatal(err)
-}
-
-func initJaegerTracing() {
-	svcAddr := os.Getenv("JAEGER_SERVICE_ADDR")
-	if svcAddr == "" {
-		log.Info("jaeger initialization disabled.")
-		return
-	}
-
-	// Register the Jaeger exporter to be able to retrieve
-	// the collected spans.
-	exporter, err := jaeger.NewExporter(jaeger.Options{
-		Endpoint: fmt.Sprintf("http://%s", svcAddr),
-		Process: jaeger.Process{
-			ServiceName: "checkoutservice",
-		},
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-	trace.RegisterExporter(exporter)
-	log.Info("jaeger initialization completed.")
-}
-
-func initStats(exporter *stackdriver.Exporter) {
-	view.SetReportingPeriod(60 * time.Second)
-	view.RegisterExporter(exporter)
-	if err := view.Register(ocgrpc.DefaultServerViews...); err != nil {
-		log.Warn("Error registering default server views")
-	} else {
-		log.Info("Registered default server views")
-	}
-}
-
-func initStackdriverTracing() {
-	// TODO(ahmetb) this method is duplicated in other microservices using Go
-	// since they are not sharing packages.
-	for i := 1; i <= 3; i++ {
-		exporter, err := stackdriver.NewExporter(stackdriver.Options{})
-		if err != nil {
-			log.Infof("failed to initialize stackdriver exporter: %+v", err)
-		} else {
-			trace.RegisterExporter(exporter)
-			log.Info("registered Stackdriver tracing")
-
-			// Register the views to collect server stats.
-			initStats(exporter)
-			return
-		}
-		d := time.Second * 10 * time.Duration(i)
-		log.Infof("sleeping %v to retry initializing Stackdriver exporter", d)
-		time.Sleep(d)
-	}
-	log.Warn("could not initialize Stackdriver exporter after retrying, giving up")
-}
-
-func initTracing() {
-	initJaegerTracing()
-	initStackdriverTracing()
-}
-
-func initProfiling(service, version string) {
-	// TODO(ahmetb) this method is duplicated in other microservices using Go
-	// since they are not sharing packages.
-	for i := 1; i <= 3; i++ {
-		if err := profiler.Start(profiler.Config{
-			Service:        service,
-			ServiceVersion: version,
-			// ProjectID must be set if not running on GCP.
-			// ProjectID: "my-project",
-		}); err != nil {
-			log.Warnf("failed to start profiler: %+v", err)
-		} else {
-			log.Info("started Stackdriver profiler")
-			return
-		}
-		d := time.Second * 10 * time.Duration(i)
-		log.Infof("sleeping %v to retry initializing Stackdriver profiler", d)
-		time.Sleep(d)
-	}
-	log.Warn("could not initialize Stackdriver profiler after retrying, giving up")
 }
 
 func mustMapEnv(target *string, envKey string) {
@@ -216,17 +121,46 @@ func (cs *checkoutService) Watch(req *healthpb.HealthCheckRequest, ws healthpb.H
 }
 
 func (cs *checkoutService) PlaceOrder(ctx context.Context, req *pb.PlaceOrderRequest) (*pb.PlaceOrderResponse, error) {
+	txn := newrelic.FromContext(ctx)
+	defer txn.StartSegment("PlaceOrder").End()
 	log.Infof("[PlaceOrder] user_id=%q user_currency=%q", req.UserId, req.UserCurrency)
 
+	txn.AddAttribute("email", req.Email)
+
 	orderID, err := uuid.NewUUID()
+	txn.Application().RecordCustomEvent(
+		"BuyingFlow", map[string]interface{}{
+			"email":  req.Email,
+			"status": false,
+			"step":   "Create Order ID"})
+	txn.AddAttribute("status", "failed to generate order uuid")
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to generate order uuid")
 	}
+	txn.Application().RecordCustomEvent(
+		"BuyingFlow", map[string]interface{}{
+			"email":   req.Email,
+			"orderId": orderID.String(),
+			"status":  true,
+			"step":    "Create Order ID"})
 
 	prep, err := cs.prepareOrderItemsAndShippingQuoteFromCart(ctx, req.UserId, req.UserCurrency, req.Address)
 	if err != nil {
+		txn.Application().RecordCustomEvent(
+			"BuyingFlow", map[string]interface{}{
+				"email":   req.Email,
+				"orderId": orderID.String(),
+				"status":  false,
+				"step":    "Prepare Order Items"})
+		txn.AddAttribute("status", "failed to prepare order")
 		return nil, status.Errorf(codes.Internal, err.Error())
 	}
+	txn.Application().RecordCustomEvent(
+		"BuyingFlow", map[string]interface{}{
+			"email":   req.Email,
+			"orderId": orderID.String(),
+			"status":  true,
+			"step":    "Prepare Order Items"})
 
 	total := pb.Money{CurrencyCode: req.UserCurrency,
 		Units: 0,
@@ -239,14 +173,46 @@ func (cs *checkoutService) PlaceOrder(ctx context.Context, req *pb.PlaceOrderReq
 
 	txID, err := cs.chargeCard(ctx, &total, req.CreditCard)
 	if err != nil {
+		txn.Application().RecordCustomEvent(
+			"BuyingFlow", map[string]interface{}{
+				"email":   req.Email,
+				"orderId": orderID.String(),
+				"status":  false,
+				"step":    "Charge Credit Card"})
+		txn.AddAttribute("status", "failed to charge card")
 		return nil, status.Errorf(codes.Internal, "failed to charge card: %+v", err)
 	}
+	txn.Application().RecordCustomEvent(
+		"BuyingFlow", map[string]interface{}{
+			"email":     req.Email,
+			"orderId":   orderID.String(),
+			"paymentId": txID,
+			"status":    true,
+			"step":      "Charge Credit Card"})
+
+	txn.AddAttribute("status", "payment went through")
+	txn.AddAttribute("paymentId", txID)
 	log.Infof("payment went through (transaction_id: %s)", txID)
 
 	shippingTrackingID, err := cs.shipOrder(ctx, req.Address, prep.cartItems)
 	if err != nil {
+		txn.Application().RecordCustomEvent(
+			"BuyingFlow", map[string]interface{}{
+				"email":     req.Email,
+				"orderId":   orderID.String(),
+				"paymentId": txID,
+				"status":    false,
+				"step":      "Process Shipment"})
+		txn.AddAttribute("status", "shipping error")
 		return nil, status.Errorf(codes.Unavailable, "shipping error: %+v", err)
 	}
+	txn.Application().RecordCustomEvent(
+		"BuyingFlow", map[string]interface{}{
+			"email":     req.Email,
+			"orderId":   orderID.String(),
+			"paymentId": txID,
+			"status":    true,
+			"step":      "Process Shipment"})
 
 	_ = cs.emptyUserCart(ctx, req.UserId)
 
@@ -259,8 +225,24 @@ func (cs *checkoutService) PlaceOrder(ctx context.Context, req *pb.PlaceOrderReq
 	}
 
 	if err := cs.sendOrderConfirmation(ctx, req.Email, orderResult); err != nil {
+		txn.Application().RecordCustomEvent(
+			"BuyingFlow", map[string]interface{}{
+				"email":     req.Email,
+				"orderId":   orderID.String(),
+				"paymentId": txID,
+				"status":    false,
+				"step":      "Send Confirmation"})
+		txn.AddAttribute("feedback", "failed to send order confirmation")
 		log.Warnf("failed to send order confirmation to %q: %+v", req.Email, err)
 	} else {
+		txn.Application().RecordCustomEvent(
+			"BuyingFlow", map[string]interface{}{
+				"email":     req.Email,
+				"orderId":   orderID.String(),
+				"paymentId": txID,
+				"status":    true,
+				"step":      "Send Confirmation"})
+		txn.AddAttribute("feedback", "order confirmation email sent")
 		log.Infof("order confirmation email sent to %q", req.Email)
 	}
 	resp := &pb.PlaceOrderResponse{Order: orderResult}
@@ -274,6 +256,9 @@ type orderPrep struct {
 }
 
 func (cs *checkoutService) prepareOrderItemsAndShippingQuoteFromCart(ctx context.Context, userID, userCurrency string, address *pb.Address) (orderPrep, error) {
+	txn := newrelic.FromContext(ctx)
+	defer txn.StartSegment("prepareOrderItemsAndShippingQuoteFromCart").End()
+
 	var out orderPrep
 	cartItems, err := cs.getUserCart(ctx, userID)
 	if err != nil {
@@ -299,9 +284,9 @@ func (cs *checkoutService) prepareOrderItemsAndShippingQuoteFromCart(ctx context
 }
 
 func (cs *checkoutService) quoteShipping(ctx context.Context, address *pb.Address, items []*pb.CartItem) (*pb.Money, error) {
-	conn, err := grpc.DialContext(ctx, cs.shippingSvcAddr,
-		grpc.WithInsecure(),
-		grpc.WithStatsHandler(&ocgrpc.ClientHandler{}))
+	txn := newrelic.FromContext(ctx)
+	defer txn.StartSegment("quoteShipping").End()
+	conn, err := grpc.DialContext(ctx, cs.shippingSvcAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		return nil, fmt.Errorf("could not connect shipping service: %+v", err)
 	}
@@ -318,7 +303,9 @@ func (cs *checkoutService) quoteShipping(ctx context.Context, address *pb.Addres
 }
 
 func (cs *checkoutService) getUserCart(ctx context.Context, userID string) ([]*pb.CartItem, error) {
-	conn, err := grpc.DialContext(ctx, cs.cartSvcAddr, grpc.WithInsecure(), grpc.WithStatsHandler(&ocgrpc.ClientHandler{}))
+	txn := newrelic.FromContext(ctx)
+	defer txn.StartSegment("getUserCart").End()
+	conn, err := grpc.DialContext(ctx, cs.cartSvcAddr, grpc.WithTransportCredentials(insecure.NewCredentials() ))
 	if err != nil {
 		return nil, fmt.Errorf("could not connect cart service: %+v", err)
 	}
@@ -332,22 +319,27 @@ func (cs *checkoutService) getUserCart(ctx context.Context, userID string) ([]*p
 }
 
 func (cs *checkoutService) emptyUserCart(ctx context.Context, userID string) error {
-	conn, err := grpc.DialContext(ctx, cs.cartSvcAddr, grpc.WithInsecure(), grpc.WithStatsHandler(&ocgrpc.ClientHandler{}))
+	txn := newrelic.FromContext(ctx)
+	defer txn.StartSegment("emptyUserCart").End()
+	conn, err := grpc.DialContext(ctx, cs.cartSvcAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		return fmt.Errorf("could not connect cart service: %+v", err)
 	}
 	defer conn.Close()
 
 	if _, err = pb.NewCartServiceClient(conn).EmptyCart(ctx, &pb.EmptyCartRequest{UserId: userID}); err != nil {
+		
 		return fmt.Errorf("failed to empty user cart during checkout: %+v", err)
 	}
 	return nil
 }
 
 func (cs *checkoutService) prepOrderItems(ctx context.Context, items []*pb.CartItem, userCurrency string) ([]*pb.OrderItem, error) {
+	txn := newrelic.FromContext(ctx)
+	defer txn.StartSegment("prepOrderItems").End()
 	out := make([]*pb.OrderItem, len(items))
 
-	conn, err := grpc.DialContext(ctx, cs.productCatalogSvcAddr, grpc.WithInsecure(), grpc.WithStatsHandler(&ocgrpc.ClientHandler{}))
+	conn, err := grpc.DialContext(ctx, cs.productCatalogSvcAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		return nil, fmt.Errorf("could not connect product catalog service: %+v", err)
 	}
@@ -371,7 +363,9 @@ func (cs *checkoutService) prepOrderItems(ctx context.Context, items []*pb.CartI
 }
 
 func (cs *checkoutService) convertCurrency(ctx context.Context, from *pb.Money, toCurrency string) (*pb.Money, error) {
-	conn, err := grpc.DialContext(ctx, cs.currencySvcAddr, grpc.WithInsecure(), grpc.WithStatsHandler(&ocgrpc.ClientHandler{}))
+	txn := newrelic.FromContext(ctx)
+	defer txn.StartSegment("convertCurrency").End()
+	conn, err := grpc.DialContext(ctx, cs.currencySvcAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		return nil, fmt.Errorf("could not connect currency service: %+v", err)
 	}
@@ -386,7 +380,9 @@ func (cs *checkoutService) convertCurrency(ctx context.Context, from *pb.Money, 
 }
 
 func (cs *checkoutService) chargeCard(ctx context.Context, amount *pb.Money, paymentInfo *pb.CreditCardInfo) (string, error) {
-	conn, err := grpc.DialContext(ctx, cs.paymentSvcAddr, grpc.WithInsecure(), grpc.WithStatsHandler(&ocgrpc.ClientHandler{}))
+	txn := newrelic.FromContext(ctx)
+	defer txn.StartSegment("chargeCard").End()
+	conn, err := grpc.DialContext(ctx, cs.paymentSvcAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		return "", fmt.Errorf("failed to connect payment service: %+v", err)
 	}
@@ -402,7 +398,9 @@ func (cs *checkoutService) chargeCard(ctx context.Context, amount *pb.Money, pay
 }
 
 func (cs *checkoutService) sendOrderConfirmation(ctx context.Context, email string, order *pb.OrderResult) error {
-	conn, err := grpc.DialContext(ctx, cs.emailSvcAddr, grpc.WithInsecure(), grpc.WithStatsHandler(&ocgrpc.ClientHandler{}))
+	txn := newrelic.FromContext(ctx)
+	defer txn.StartSegment("sendOrderConfirmation").End()
+	conn, err := grpc.DialContext(ctx, cs.emailSvcAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		return fmt.Errorf("failed to connect email service: %+v", err)
 	}
@@ -414,7 +412,9 @@ func (cs *checkoutService) sendOrderConfirmation(ctx context.Context, email stri
 }
 
 func (cs *checkoutService) shipOrder(ctx context.Context, address *pb.Address, items []*pb.CartItem) (string, error) {
-	conn, err := grpc.DialContext(ctx, cs.shippingSvcAddr, grpc.WithInsecure(), grpc.WithStatsHandler(&ocgrpc.ClientHandler{}))
+	txn := newrelic.FromContext(ctx)
+	defer txn.StartSegment("shipOrder").End()
+	conn, err := grpc.DialContext(ctx, cs.shippingSvcAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		return "", fmt.Errorf("failed to connect email service: %+v", err)
 	}

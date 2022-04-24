@@ -17,6 +17,7 @@
 import logging
 import sys
 from pythonjsonlogger import jsonlogger
+from newrelic.agent import NewRelicContextFormatter
 
 # TODO(yoshifumi) this class is duplicated since other Python services are
 # not sharing the modules for logging.
@@ -30,10 +31,12 @@ class CustomJsonFormatter(jsonlogger.JsonFormatter):
     else:
       log_record['severity'] = record.levelname
 
-def getJSONLogger(name):
+def getNewrelicLogger(name):
   logger = logging.getLogger(name)
+  # Instantiate a new log handler
   handler = logging.StreamHandler(sys.stdout)
-  formatter = CustomJsonFormatter('(timestamp) (severity) (name) (message)')
+  # Instantiate the log formatter and add it to the log handler
+  formatter = NewRelicContextFormatter()
   handler.setFormatter(formatter)
   logger.addHandler(handler)
   logger.setLevel(logging.INFO)

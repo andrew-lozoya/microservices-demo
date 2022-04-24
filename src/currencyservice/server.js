@@ -13,41 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-if(process.env.DISABLE_PROFILER) {
-  console.log("Profiler disabled.")
-}
-else {
-  console.log("Profiler enabled.")
-  require('@google-cloud/profiler').start({
-    serviceContext: {
-      service: 'currencyservice',
-      version: '1.0.0'
-    }
-  });
-}
-
-
-if(process.env.DISABLE_TRACING) {
-  console.log("Tracing disabled.")
-}
-else {
-  console.log("Tracing enabled.")
-  require('@google-cloud/trace-agent').start();
-}
-
-if(process.env.DISABLE_DEBUGGER) {
-  console.log("Debugger disabled.")
-}
-else {
-  console.log("Debugger enabled.")
-  require('@google-cloud/debug-agent').start({
-    serviceContext: {
-      service: 'currencyservice',
-      version: 'VERSION'
-    }
-  });
-}
+const newrelic = require('newrelic');
+const nrPino = require('@newrelic/pino-enricher');
 
 const path = require('path');
 const grpc = require('@grpc/grpc-js');
@@ -62,20 +29,14 @@ const PORT = process.env.PORT;
 const shopProto = _loadProto(MAIN_PROTO_PATH).hipstershop;
 const healthProto = _loadProto(HEALTH_PROTO_PATH).grpc.health.v1;
 
-const logger = pino({
-  name: 'currencyservice-server',
-  messageKey: 'message',
-  changeLevelName: 'severity',
-  useLevelLabels: true
-});
+const logger = pino(nrPino())
 
 /**
  * Helper function that loads a protobuf file.
  */
-function _loadProto (path) {
+function _loadProto(path) {
   const packageDefinition = protoLoader.loadSync(
-    path,
-    {
+    path, {
       keepCase: true,
       longs: String,
       enums: String,
@@ -90,7 +51,7 @@ function _loadProto (path) {
  * Helper function that gets currency data from a stored JSON file
  * Uses public data from European Central Bank
  */
-function _getCurrencyData (callback) {
+function _getCurrencyData(callback) {
   const data = require('./data/currency_conversion.json');
   callback(data);
 }
@@ -98,7 +59,7 @@ function _getCurrencyData (callback) {
 /**
  * Helper function that handles decimal/fractional carrying
  */
-function _carry (amount) {
+function _carry(amount) {
   const fractionSize = Math.pow(10, 9);
   amount.nanos += (amount.units % 1) * fractionSize;
   amount.units = Math.floor(amount.units) + Math.floor(amount.nanos / fractionSize);
@@ -109,74 +70,110 @@ function _carry (amount) {
 /**
  * Lists the supported currencies
  */
-function getSupportedCurrencies (call, callback) {
-  logger.info('Getting supported currencies...');
-  _getCurrencyData((data) => {
-    callback(null, {currency_codes: Object.keys(data)});
-  });
+function getSupportedCurrencies(call, callback) {
+  newrelic.startWebTransaction('hipstershop.CurrancyService/GetSupportedCurrencies', function () {
+    const txn = newrelic.getTransaction();
+    try {
+      txn.acceptDistributedTraceHeaders('HTTP', call.metadata.getMap());
+      logger.info('Getting supported currencies...');
+      newrelic.startSegment('gerCurrencyData', true, _getCurrencyData, function getCurrencyHandler(data) {
+        callback(null, {
+          currency_codes: Object.keys(data)
+        });
+      });
+    } catch (err) {
+      logger.error(`Supported currencies request failed: ${err}`);
+      callback(err.message);
+    } finally {
+      txn.end();
+    }
+  })
 }
 
 /**
  * Converts between currencies
  */
-function convert (call, callback) {
-  try {
-    _getCurrencyData((data) => {
-      const request = call.request;
+function convert(call, callback) {
+  newrelic.startWebTransaction('hipstershop.CurrancyService/Convert', function () {
+    const txn = newrelic.getTransaction();
 
-      // Convert: from_currency --> EUR
-      const from = request.from;
-      const euros = _carry({
-        units: from.units / data[from.currency_code],
-        nanos: from.nanos / data[from.currency_code]
+    logger.info('[Convert] Received conversion request');
+    try {
+      txn.acceptDistributedTraceHeaders('HTTP', call.metadata.getMap());
+
+      newrelic.startSegment('gerCurrencyData', true, _getCurrencyData, function getCurrencyHandler(data) {
+        const request = call.request;
+
+        // Convert: from_currency --> EUR
+        const from = request.from;
+        const euros = _carry({
+          units: from.units / data[from.currency_code],
+          nanos: from.nanos / data[from.currency_code]
+        });
+
+        euros.nanos = Math.round(euros.nanos);
+
+        // Convert: EUR --> to_currency
+        const result = _carry({
+          units: euros.units * data[request.to_code],
+          nanos: euros.nanos * data[request.to_code]
+        });
+
+        result.units = Math.floor(result.units);
+        result.nanos = Math.floor(result.nanos);
+        result.currency_code = request.to_code;
+
+        newrelic.addCustomAttributes({
+          "currenyFrom": request.currency_code,
+          "currencyTo": request.to_code,
+          "amountEuros": euros.units,
+          "amountConversion": result.currency_code + ' ' + result.units + '.' + result.nanos
+        });
+
+        logger.info(`[Convert] conversion request successful processed from: EUR ${euros.units}.${euros.nanos} to: ${request.to_code} ${result.units}.${result.nanos}`);
+        callback(null, result);
       });
-
-      euros.nanos = Math.round(euros.nanos);
-
-      // Convert: EUR --> to_currency
-      const result = _carry({
-        units: euros.units * data[request.to_code],
-        nanos: euros.nanos * data[request.to_code]
-      });
-
-      result.units = Math.floor(result.units);
-      result.nanos = Math.floor(result.nanos);
-      result.currency_code = request.to_code;
-
-      logger.info(`conversion request successful`);
-      callback(null, result);
-    });
-  } catch (err) {
-    logger.error(`conversion request failed: ${err}`);
-    callback(err.message);
-  }
+    } catch (err) {
+      logger.error(`conversion request failed: ${err}`);
+      callback(err.message);
+    } finally {
+      txn.end();
+    }
+  });
 }
 
 /**
  * Endpoint for health checks
  */
-function check (call, callback) {
-  callback(null, { status: 'SERVING' });
+function check(call, callback) {
+  callback(null, {
+    status: 'SERVING'
+  });
 }
 
 /**
  * Starts an RPC server that receives requests for the
  * CurrencyConverter service at the sample server port
  */
-function main () {
+function main() {
   logger.info(`Starting gRPC server on port ${PORT}...`);
   const server = new grpc.Server();
-  server.addService(shopProto.CurrencyService.service, {getSupportedCurrencies, convert});
-  server.addService(healthProto.Health.service, {check});
+  server.addService(shopProto.CurrencyService.service, {
+    getSupportedCurrencies,
+    convert
+  });
+  server.addService(healthProto.Health.service, {
+    check
+  });
 
   server.bindAsync(
     `0.0.0.0:${PORT}`,
     grpc.ServerCredentials.createInsecure(),
-    function() {
+    function () {
       logger.info(`CurrencyService gRPC server started on port ${PORT}`);
       server.start();
     },
-   );
+  );
 }
 
 main();

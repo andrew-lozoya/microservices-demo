@@ -25,6 +25,7 @@ log() { echo "$1" >&2; }
 
 TAG="${TAG:?TAG env variable must be specified}"
 REPO_PREFIX="${REPO_PREFIX:?REPO_PREFIX env variable must be specified}"
+NEW_RELIC_LICENSE_KEY="${NEW_RELIC_LICENSE_KEY:?NEW_RELIC_LICENSE_KEY env variable must be specified}"
 OUT_DIR="${OUT_DIR:-${SCRIPTDIR}/../release}"
 
 print_license_header() {
@@ -52,7 +53,6 @@ read_manifests() {
 
     while IFS= read -d $'\0' -r file; do
         echo "---"
-        
         # strip license headers (pattern "^# ")
         awk '
         /^[^# ]/ { found = 1 }
@@ -64,14 +64,16 @@ mk_kubernetes_manifests() {
     out_manifest="$(read_manifests "${SCRIPTDIR}/../kubernetes-manifests")"
 
     # replace "image" repo, tag for each service
-    for dir in ./src/*/
+    for dir in ../src/*/
     do
         svcname="$(basename "${dir}")"
         image="$REPO_PREFIX/$svcname:$TAG"
 
-        pattern="^(\s*)image:\s.*$svcname(.*)(\s*)"
-        replace="\1image: $image\3"
-        out_manifest="$(gsed -r "s|$pattern|$replace|g" <(echo "${out_manifest}") )"
+        imgpattern="^(\s*)image:\s.*$svcname(.*)(\s*)"
+        imgreplace="\1image: $image\3"
+        keypattern="^(\s*)value:\s.*YOUR_LICENSE_KEY(.*)(\s*)"
+        keyreplace="\1value: $NEW_RELIC_LICENSE_KEY\3"
+        out_manifest="$(gsed -r -e "s|$imgpattern|$imgreplace|g" -e "s|$keypattern|$keyreplace|g" <(echo "${out_manifest}") )"
     done
 
     print_license_header

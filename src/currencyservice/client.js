@@ -15,7 +15,8 @@
  * limitations under the License.
  *
  */
-require('@google-cloud/trace-agent').start();
+const newrelic = require('newrelic');
+const nrPino = require('@newrelic/pino-enricher');
 
 const path = require('path');
 const grpc = require('grpc');
@@ -29,12 +30,7 @@ const shopProto = grpc.load(PROTO_PATH).hipstershop;
 const client = new shopProto.CurrencyService(`localhost:${PORT}`,
   grpc.credentials.createInsecure());
 
-const logger = pino({
-  name: 'currencyservice-client',
-  messageKey: 'message',
-  changeLevelName: 'severity',
-  useLevelLabels: true
-});
+const logger = pino(nrPino())
 
 const request = {
   from: {

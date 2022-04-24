@@ -11,6 +11,8 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+const newrelic = require('newrelic');
+const nrPino = require('@newrelic/pino-enricher');
 
 const path = require('path');
 const grpc = require('@grpc/grpc-js');
@@ -19,12 +21,7 @@ const protoLoader = require('@grpc/proto-loader');
 
 const charge = require('./charge');
 
-const logger = pino({
-  name: 'paymentservice-server',
-  messageKey: 'message',
-  changeLevelName: 'severity',
-  useLevelLabels: true
-});
+const logger = pino(nrPino())
 
 class HipsterShopServer {
   constructor(protoRoot, port = HipsterShopServer.PORT) {

@@ -28,6 +28,7 @@ while IFS= read -d $'\0' -r dir; do
     # build image
     svcname="$(basename "${dir}")"
     builddir="${dir}"
+    
     #PR 516 moved cartservice build artifacts one level down to src
     if [ $svcname == "cartservice" ] 
     then
@@ -37,6 +38,10 @@ while IFS= read -d $'\0' -r dir; do
     (
         cd "${builddir}"
         log "Building: ${image}"
+
+        #Apple Silicon
+        #docker buildx build --push -t "${image}" --platform linux/amd64 .
+
         docker build -t "${image}" .
 
         log "Pushing: ${image}"

@@ -33,6 +33,12 @@ spec:
         ports:
         - containerPort: 7070
         env:
+        - name: NEW_RELIC_APP_NAME
+          value: cart-service
+        - name: NEW_RELIC_LICENSE_KEY
+          value: YOUR_LICENSE_KEY
+        - name: NEW_RELIC_DISTRIBUTED_TRACING_ENABLED
+          value: "true"
         - name: REDIS_ADDR
           value: "redis-cart:6379"
         resources:

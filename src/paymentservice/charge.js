@@ -12,17 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+const nrPino = require('@newrelic/pino-enricher');
+
 const cardValidator = require('simple-card-validator');
 const uuid = require('uuid/v4');
 const pino = require('pino');
 
-const logger = pino({
-  name: 'paymentservice-charge',
-  messageKey: 'message',
-  changeLevelName: 'severity',
-  useLevelLabels: true
-});
-
+const logger = pino(nrPino())
 
 class CreditCardError extends Error {
   constructor (message) {
