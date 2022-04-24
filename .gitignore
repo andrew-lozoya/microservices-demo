@@ -10,6 +10,6 @@ pkg/
 .skaffold-*.yaml
 .project
 .eclipse.buildship.core.prefs
-release/kubernetes-manifests.yaml
+release/*.yaml
 *.code-workspace
 NOTES
