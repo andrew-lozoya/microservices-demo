@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"strconv"
 
 	"github.com/sirupsen/logrus"
 	"golang.org/x/net/context"
@@ -111,7 +112,12 @@ func (s *server) GetQuote(ctx context.Context, in *pb.GetQuoteRequest) (*pb.GetQ
 
 	// 2. Generate a quote based on the total number of items to be shipped.
 	quote := CreateQuoteFromCount(count)
-	txn.AddAttribute("shippingQuote", quote)
+	qStruct := fmt.Sprintf("%d.%d", quote.Dollars, quote.Cents)
+	f, err := strconv.ParseFloat(qStruct, 32)
+	if err != nil {
+		fmt.Println(err)
+	}
+	txn.AddAttribute("shippingQuote", f)
 
 	// 3. Generate a response.
 	return &pb.GetQuoteResponse{

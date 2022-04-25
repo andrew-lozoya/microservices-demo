@@ -93,10 +93,7 @@ class EmailService(BaseEmailService):
     newrelic.agent.set_transaction_name('hipstershop.emailservice/SendOrderConfirmation')
     email = request.email
     order = request.order
-
-    newrelic.agent.add_custom_parameter('userEmail', email)
-    newrelic.agent.add_custom_parameter('orderId', order)
-    
+       
     try:
       confirmation = template.render(order = order)
     except TemplateError as err:

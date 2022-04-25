@@ -42,13 +42,13 @@ class HipsterShopServer {
    * @param {*} callback  fn(err, ChargeResponse)
    */
   static ChargeServiceHandler(call, callback) {
-    newrelic.startWebTransaction('hipstershop.CurrancyService/ChargeServiceHandler', function () {
+    newrelic.startBackgroundTransaction('hipstershop.PaymentService/ChargeServiceHandler', function () {
       const txn = newrelic.getTransaction();
       try {
         txn.acceptDistributedTraceHeaders('HTTP', call.metadata.getMap());
-          const response = charge(call.request);
-          newrelic.addCustomAttributes(response);
-          callback(null, response);
+        const response = charge(call.request);
+        newrelic.addCustomAttributes({"paymentId": JSON.stringify(response.transaction_id)});
+        callback(null, response);
       } catch (err) {
         console.warn(err);
         callback(err);
