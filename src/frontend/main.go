@@ -30,6 +30,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 const (
@@ -150,7 +151,7 @@ func mustConnGRPC(ctx context.Context, conn **grpc.ClientConn, addr string) {
 	ctx, cancel := context.WithTimeout(ctx, time.Second*3)
 	defer cancel()
 	*conn, err = grpc.DialContext(ctx, addr,
-		grpc.WithInsecure(),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithUnaryInterceptor(nrgrpc.UnaryClientInterceptor),
 		grpc.WithStreamInterceptor(nrgrpc.StreamClientInterceptor))
 	if err != nil {

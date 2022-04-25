@@ -42,7 +42,7 @@ class HipsterShopServer {
    * @param {*} callback  fn(err, ChargeResponse)
    */
   static ChargeServiceHandler(call, callback) {
-    newrelic.startBackgroundTransaction('hipstershop.PaymentService/ChargeServiceHandler', function () {
+    newrelic.startWebTransaction('hipstershop.PaymentService/ChargeServiceHandler', function () {
       const txn = newrelic.getTransaction();
       try {
         txn.acceptDistributedTraceHeaders('HTTP', call.metadata.getMap());

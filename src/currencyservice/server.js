@@ -71,7 +71,7 @@ function _carry(amount) {
  * Lists the supported currencies
  */
 function getSupportedCurrencies(call, callback) {
-  newrelic.startBackgroundTransaction('hipstershop.CurrancyService/GetSupportedCurrencies', function () {
+  newrelic.startWebTransaction('hipstershop.CurrancyService/GetSupportedCurrencies', function () {
     const txn = newrelic.getTransaction();
     try {
       txn.acceptDistributedTraceHeaders('HTTP', call.metadata.getMap());
@@ -94,7 +94,7 @@ function getSupportedCurrencies(call, callback) {
  * Converts between currencies
  */
 function convert(call, callback) {
-  newrelic.startBackgroundTransaction('hipstershop.CurrancyService/Convert', function () {
+  newrelic.startWebTransaction('hipstershop.CurrancyService/Convert', function () {
     const txn = newrelic.getTransaction();
 
     logger.info('[Convert] Received conversion request');
