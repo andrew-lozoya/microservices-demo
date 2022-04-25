@@ -47,9 +47,7 @@ class HipsterShopServer {
       try {
         txn.acceptDistributedTraceHeaders('HTTP', call.metadata.getMap());
           const response = charge(call.request);
-          newrelic.addCustomAttributes({
-            "transaction_id": response
-          });
+          newrelic.addCustomAttributes(response);
           callback(null, response);
       } catch (err) {
         console.warn(err);

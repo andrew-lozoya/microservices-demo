@@ -24,7 +24,6 @@ import (
 	"github.com/sirupsen/logrus"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
 
 	nrlogrusplugin "github.com/newrelic/go-agent/v3/integrations/logcontext/nrlogrusplugin"
@@ -69,6 +68,7 @@ func main() {
 		},
 	)
 
+
 	port := listenPort
 	if os.Getenv("PORT") != "" {
 		port = os.Getenv("PORT")
@@ -90,10 +90,6 @@ func main() {
 	}
 
 	var srv *grpc.Server
-	nrgrpc.Configure(
-		nrgrpc.WithStatusHandler(codes.DeadlineExceeded, nrgrpc.ErrorInterceptorStatusHandler),
-		nrgrpc.WithStatusHandler(codes.NotFound, nrgrpc.WarningInterceptorStatusHandler))
-	
 	srv = grpc.NewServer(
 		grpc.UnaryInterceptor(nrgrpc.UnaryServerInterceptor(app)),
 		grpc.StreamInterceptor(nrgrpc.StreamServerInterceptor(app)))
@@ -123,9 +119,8 @@ func (cs *checkoutService) Watch(req *healthpb.HealthCheckRequest, ws healthpb.H
 
 func (cs *checkoutService) PlaceOrder(ctx context.Context, req *pb.PlaceOrderRequest) (*pb.PlaceOrderResponse, error) {
 	txn := newrelic.FromContext(ctx)
-	defer txn.StartSegment("PlaceOrder").End()
-	log.Infof("[PlaceOrder] user_id=%q user_currency=%q", req.UserId, req.UserCurrency)
 
+	log.Infof("[PlaceOrder] user_id=%q user_currency=%q", req.UserId, req.UserCurrency)
 	txn.AddAttribute("email", req.Email)
 
 	orderID, err := uuid.NewUUID()
@@ -257,9 +252,6 @@ type orderPrep struct {
 }
 
 func (cs *checkoutService) prepareOrderItemsAndShippingQuoteFromCart(ctx context.Context, userID, userCurrency string, address *pb.Address) (orderPrep, error) {
-	txn := newrelic.FromContext(ctx)
-	defer txn.StartSegment("prepareOrderItemsAndShippingQuoteFromCart").End()
-
 	var out orderPrep
 	cartItems, err := cs.getUserCart(ctx, userID)
 	if err != nil {
@@ -285,11 +277,8 @@ func (cs *checkoutService) prepareOrderItemsAndShippingQuoteFromCart(ctx context
 }
 
 func (cs *checkoutService) quoteShipping(ctx context.Context, address *pb.Address, items []*pb.CartItem) (*pb.Money, error) {
-	txn := newrelic.FromContext(ctx)
-	defer txn.StartSegment("quoteShipping").End()
-
 	conn, err := grpc.DialContext(ctx, cs.shippingSvcAddr, 
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithInsecure(),
 		grpc.WithUnaryInterceptor(nrgrpc.UnaryClientInterceptor),
 		grpc.WithStreamInterceptor(nrgrpc.StreamClientInterceptor),
 	)
@@ -309,11 +298,8 @@ func (cs *checkoutService) quoteShipping(ctx context.Context, address *pb.Addres
 }
 
 func (cs *checkoutService) getUserCart(ctx context.Context, userID string) ([]*pb.CartItem, error) {
-	txn := newrelic.FromContext(ctx)
-	defer txn.StartSegment("getUserCart").End()
-
 	conn, err := grpc.DialContext(ctx, cs.cartSvcAddr, 
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithInsecure(),
 		grpc.WithUnaryInterceptor(nrgrpc.UnaryClientInterceptor),
 		grpc.WithStreamInterceptor(nrgrpc.StreamClientInterceptor),
 	)
@@ -330,11 +316,8 @@ func (cs *checkoutService) getUserCart(ctx context.Context, userID string) ([]*p
 }
 
 func (cs *checkoutService) emptyUserCart(ctx context.Context, userID string) error {
-	txn := newrelic.FromContext(ctx)
-	defer txn.StartSegment("emptyUserCart").End()
-
 	conn, err := grpc.DialContext(ctx, cs.cartSvcAddr, 
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithInsecure(),
 		grpc.WithUnaryInterceptor(nrgrpc.UnaryClientInterceptor),
 		grpc.WithStreamInterceptor(nrgrpc.StreamClientInterceptor),
 	)
@@ -351,12 +334,10 @@ func (cs *checkoutService) emptyUserCart(ctx context.Context, userID string) err
 }
 
 func (cs *checkoutService) prepOrderItems(ctx context.Context, items []*pb.CartItem, userCurrency string) ([]*pb.OrderItem, error) {
-	txn := newrelic.FromContext(ctx)
-	defer txn.StartSegment("prepOrderItems").End()
 	out := make([]*pb.OrderItem, len(items))
 
 	conn, err := grpc.DialContext(ctx, cs.productCatalogSvcAddr,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithInsecure(),
 		grpc.WithUnaryInterceptor(nrgrpc.UnaryClientInterceptor),
 		grpc.WithStreamInterceptor(nrgrpc.StreamClientInterceptor),
 	)
@@ -383,11 +364,8 @@ func (cs *checkoutService) prepOrderItems(ctx context.Context, items []*pb.CartI
 }
 
 func (cs *checkoutService) convertCurrency(ctx context.Context, from *pb.Money, toCurrency string) (*pb.Money, error) {
-	txn := newrelic.FromContext(ctx)
-	defer txn.StartSegment("convertCurrency").End()
-
 	conn, err := grpc.DialContext(ctx, cs.currencySvcAddr,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithInsecure(),
 		grpc.WithUnaryInterceptor(nrgrpc.UnaryClientInterceptor),
 		grpc.WithStreamInterceptor(nrgrpc.StreamClientInterceptor),
 	)
@@ -405,11 +383,8 @@ func (cs *checkoutService) convertCurrency(ctx context.Context, from *pb.Money, 
 }
 
 func (cs *checkoutService) chargeCard(ctx context.Context, amount *pb.Money, paymentInfo *pb.CreditCardInfo) (string, error) {
-	txn := newrelic.FromContext(ctx)
-	defer txn.StartSegment("chargeCard").End()
-
 	conn, err := grpc.DialContext(ctx, cs.paymentSvcAddr,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithInsecure(),
 		grpc.WithUnaryInterceptor(nrgrpc.UnaryClientInterceptor),
 		grpc.WithStreamInterceptor(nrgrpc.StreamClientInterceptor),
 	)
@@ -428,10 +403,8 @@ func (cs *checkoutService) chargeCard(ctx context.Context, amount *pb.Money, pay
 }
 
 func (cs *checkoutService) sendOrderConfirmation(ctx context.Context, email string, order *pb.OrderResult) error {
-	txn := newrelic.FromContext(ctx)
-	defer txn.StartSegment("sendOrderConfirmation").End()
 	conn, err := grpc.DialContext(ctx, cs.emailSvcAddr,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithInsecure(),
 		grpc.WithUnaryInterceptor(nrgrpc.UnaryClientInterceptor),
 		grpc.WithStreamInterceptor(nrgrpc.StreamClientInterceptor),
 	)
@@ -439,6 +412,7 @@ func (cs *checkoutService) sendOrderConfirmation(ctx context.Context, email stri
 		return fmt.Errorf("failed to connect email service: %+v", err)
 	}
 	defer conn.Close()
+
 	_, err = pb.NewEmailServiceClient(conn).SendOrderConfirmation(ctx, &pb.SendOrderConfirmationRequest{
 		Email: email,
 		Order: order})
@@ -446,11 +420,8 @@ func (cs *checkoutService) sendOrderConfirmation(ctx context.Context, email stri
 }
 
 func (cs *checkoutService) shipOrder(ctx context.Context, address *pb.Address, items []*pb.CartItem) (string, error) {
-	txn := newrelic.FromContext(ctx)
-	defer txn.StartSegment("shipOrder").End()
-	
 	conn, err := grpc.DialContext(ctx, cs.shippingSvcAddr,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithInsecure(),
 		grpc.WithUnaryInterceptor(nrgrpc.UnaryClientInterceptor),
 		grpc.WithStreamInterceptor(nrgrpc.StreamClientInterceptor),
 	)

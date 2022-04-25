@@ -94,6 +94,9 @@ class EmailService(BaseEmailService):
     email = request.email
     order = request.order
 
+    newrelic.agent.add_custom_parameter('userEmail', email)
+    newrelic.agent.add_custom_parameter('orderId', order)
+    
     try:
       confirmation = template.render(order = order)
     except TemplateError as err:

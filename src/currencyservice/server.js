@@ -101,7 +101,7 @@ function convert(call, callback) {
     try {
       txn.acceptDistributedTraceHeaders('HTTP', call.metadata.getMap());
 
-      newrelic.startSegment('gerCurrencyData', true, _getCurrencyData, function getCurrencyHandler(data) {
+      newrelic.startSegment('getCurrencyData', true, _getCurrencyData, function getCurrencyHandler(data) {
         const request = call.request;
 
         // Convert: from_currency --> EUR
@@ -124,10 +124,10 @@ function convert(call, callback) {
         result.currency_code = request.to_code;
 
         newrelic.addCustomAttributes({
-          "currenyFrom": request.currency_code,
+          "currenyFrom": "EUR",
           "currencyTo": request.to_code,
-          "amountEuros": euros.units,
-          "amountConversion": result.currency_code + ' ' + result.units + '.' + result.nanos
+          "orginalAmount": "EUR " + euros.units,
+          "conversionAmount": result.currency_code + ' ' + result.units + '.' + result.nanos
         });
 
         logger.info(`[Convert] conversion request successful processed from: EUR ${euros.units}.${euros.nanos} to: ${request.to_code} ${result.units}.${result.nanos}`);
