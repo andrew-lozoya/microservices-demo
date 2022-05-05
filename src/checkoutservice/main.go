@@ -24,6 +24,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
 
 	nrlogrusplugin "github.com/newrelic/go-agent/v3/integrations/logcontext/nrlogrusplugin"
@@ -89,8 +90,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	var srv *grpc.Server
-	srv = grpc.NewServer(
+	srv := grpc.NewServer(
 		grpc.UnaryInterceptor(nrgrpc.UnaryServerInterceptor(app)),
 		grpc.StreamInterceptor(nrgrpc.StreamServerInterceptor(app)))
 
@@ -278,7 +278,7 @@ func (cs *checkoutService) prepareOrderItemsAndShippingQuoteFromCart(ctx context
 
 func (cs *checkoutService) quoteShipping(ctx context.Context, address *pb.Address, items []*pb.CartItem) (*pb.Money, error) {
 	conn, err := grpc.DialContext(ctx, cs.shippingSvcAddr, 
-		grpc.WithInsecure(),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithUnaryInterceptor(nrgrpc.UnaryClientInterceptor),
 		grpc.WithStreamInterceptor(nrgrpc.StreamClientInterceptor),
 	)
@@ -299,7 +299,7 @@ func (cs *checkoutService) quoteShipping(ctx context.Context, address *pb.Addres
 
 func (cs *checkoutService) getUserCart(ctx context.Context, userID string) ([]*pb.CartItem, error) {
 	conn, err := grpc.DialContext(ctx, cs.cartSvcAddr, 
-		grpc.WithInsecure(),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithUnaryInterceptor(nrgrpc.UnaryClientInterceptor),
 		grpc.WithStreamInterceptor(nrgrpc.StreamClientInterceptor),
 	)
@@ -317,7 +317,7 @@ func (cs *checkoutService) getUserCart(ctx context.Context, userID string) ([]*p
 
 func (cs *checkoutService) emptyUserCart(ctx context.Context, userID string) error {
 	conn, err := grpc.DialContext(ctx, cs.cartSvcAddr, 
-		grpc.WithInsecure(),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithUnaryInterceptor(nrgrpc.UnaryClientInterceptor),
 		grpc.WithStreamInterceptor(nrgrpc.StreamClientInterceptor),
 	)
@@ -337,7 +337,7 @@ func (cs *checkoutService) prepOrderItems(ctx context.Context, items []*pb.CartI
 	out := make([]*pb.OrderItem, len(items))
 
 	conn, err := grpc.DialContext(ctx, cs.productCatalogSvcAddr,
-		grpc.WithInsecure(),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithUnaryInterceptor(nrgrpc.UnaryClientInterceptor),
 		grpc.WithStreamInterceptor(nrgrpc.StreamClientInterceptor),
 	)
@@ -365,7 +365,7 @@ func (cs *checkoutService) prepOrderItems(ctx context.Context, items []*pb.CartI
 
 func (cs *checkoutService) convertCurrency(ctx context.Context, from *pb.Money, toCurrency string) (*pb.Money, error) {
 	conn, err := grpc.DialContext(ctx, cs.currencySvcAddr,
-		grpc.WithInsecure(),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithUnaryInterceptor(nrgrpc.UnaryClientInterceptor),
 		grpc.WithStreamInterceptor(nrgrpc.StreamClientInterceptor),
 	)
@@ -384,7 +384,7 @@ func (cs *checkoutService) convertCurrency(ctx context.Context, from *pb.Money, 
 
 func (cs *checkoutService) chargeCard(ctx context.Context, amount *pb.Money, paymentInfo *pb.CreditCardInfo) (string, error) {
 	conn, err := grpc.DialContext(ctx, cs.paymentSvcAddr,
-		grpc.WithInsecure(),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithUnaryInterceptor(nrgrpc.UnaryClientInterceptor),
 		grpc.WithStreamInterceptor(nrgrpc.StreamClientInterceptor),
 	)
@@ -404,7 +404,7 @@ func (cs *checkoutService) chargeCard(ctx context.Context, amount *pb.Money, pay
 
 func (cs *checkoutService) sendOrderConfirmation(ctx context.Context, email string, order *pb.OrderResult) error {
 	conn, err := grpc.DialContext(ctx, cs.emailSvcAddr,
-		grpc.WithInsecure(),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithUnaryInterceptor(nrgrpc.UnaryClientInterceptor),
 		grpc.WithStreamInterceptor(nrgrpc.StreamClientInterceptor),
 	)
@@ -421,7 +421,7 @@ func (cs *checkoutService) sendOrderConfirmation(ctx context.Context, email stri
 
 func (cs *checkoutService) shipOrder(ctx context.Context, address *pb.Address, items []*pb.CartItem) (string, error) {
 	conn, err := grpc.DialContext(ctx, cs.shippingSvcAddr,
-		grpc.WithInsecure(),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithUnaryInterceptor(nrgrpc.UnaryClientInterceptor),
 		grpc.WithStreamInterceptor(nrgrpc.StreamClientInterceptor),
 	)

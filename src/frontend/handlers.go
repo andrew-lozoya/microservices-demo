@@ -235,7 +235,6 @@ func (fe *frontendServer) addToCartHandler(w http.ResponseWriter, r *http.Reques
 	txn.AddAttribute("product", productID)
 	txn.AddAttribute("quantity", quantity)
 	txn.AddAttribute("productCost", p.GetPriceUsd().GetUnits())
-	txn.AddAttribute("sessionId", sessionID(r))
 
 	if err := fe.insertCart(r.Context(), sessionID(r), p.GetId(), int32(quantity)); err != nil {
 		renderHTTPError(log, r, w, errors.Wrap(err, "failed to add to cart"), http.StatusInternalServerError)
@@ -489,8 +488,10 @@ func currentCurrency(r *http.Request) string {
 }
 
 func sessionID(r *http.Request) string {
+	txn := newrelic.FromContext(r.Context())
 	v := r.Context().Value(ctxKeySessionID{})
 	if v != nil {
+		txn.AddAttribute("sessionId", v.(string))
 		return v.(string)
 	}
 	return ""

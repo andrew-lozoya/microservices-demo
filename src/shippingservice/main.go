@@ -113,7 +113,13 @@ func (s *server) GetQuote(ctx context.Context, in *pb.GetQuoteRequest) (*pb.GetQ
 	// 2. Generate a quote based on the total number of items to be shipped.
 	quote := CreateQuoteFromCount(count)
 	qStruct := fmt.Sprintf("%d.%d", quote.Dollars, quote.Cents)
-	f, err := strconv.ParseFloat(qStruct, 32)
+	rawQuote, err := strconv.ParseFloat(qStruct, 64)
+	if err != nil {
+		fmt.Println(err)
+	}
+	fmtQuote := fmt.Sprintf("%.2f", rawQuote)
+
+	f, err := strconv.ParseFloat(fmtQuote, 64)
 	if err != nil {
 		fmt.Println(err)
 	}
