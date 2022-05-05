@@ -357,6 +357,7 @@ func (fe *frontendServer) viewCartHandler(w http.ResponseWriter, r *http.Request
 
 func (fe *frontendServer) placeOrderHandler(w http.ResponseWriter, r *http.Request) {
 	txn := newrelic.FromContext(r.Context())
+	// BrowserTimingHeader() breaking here
 	defer txn.StartSegment("placeOrderHandler").End()
 
 	log := r.Context().Value(ctxKeyLog{}).(logrus.FieldLogger)
