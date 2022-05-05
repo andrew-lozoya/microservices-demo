@@ -54,6 +54,12 @@ var validEnvs = []string{"local", "gcp", "azure", "aws", "onprem", "alibaba"}
 
 func (fe *frontendServer) homeHandler(w http.ResponseWriter, r *http.Request) {
 	txn := newrelic.FromContext(r.Context())
+	hdr := txn.BrowserTimingHeader()
+	// BrowserTimingHeader() will always return a header whose methods can
+	// be safely called.
+	if js := hdr.WithTags(); js != nil {
+		w.Write(js)
+	}
 	defer txn.StartSegment("homeHandler").End()
 	log := r.Context().Value(ctxKeyLog{}).(logrus.FieldLogger)
 	log.WithField("currency", currentCurrency(r)).Info("home")
@@ -149,8 +155,13 @@ func (plat *platformDetails) setPlatformDetails(env string) {
 
 func (fe *frontendServer) productHandler(w http.ResponseWriter, r *http.Request) {
 	txn := newrelic.FromContext(r.Context())
+	hdr := txn.BrowserTimingHeader()
+	// BrowserTimingHeader() will always return a header whose methods can
+	// be safely called.
+	if js := hdr.WithTags(); js != nil {
+		w.Write(js)
+	}
 	defer txn.StartSegment("productHandler").End()
-
 
 	log := r.Context().Value(ctxKeyLog{}).(logrus.FieldLogger)
 	id := mux.Vars(r)["id"]
@@ -247,6 +258,7 @@ func (fe *frontendServer) addToCartHandler(w http.ResponseWriter, r *http.Reques
 func (fe *frontendServer) emptyCartHandler(w http.ResponseWriter, r *http.Request) {
 	txn := newrelic.FromContext(r.Context())
 	defer txn.StartSegment("emptyCartHandler").End()
+
 	log := r.Context().Value(ctxKeyLog{}).(logrus.FieldLogger)
 	log.Debug("emptying cart")
 
@@ -260,7 +272,14 @@ func (fe *frontendServer) emptyCartHandler(w http.ResponseWriter, r *http.Reques
 
 func (fe *frontendServer) viewCartHandler(w http.ResponseWriter, r *http.Request) {
 	txn := newrelic.FromContext(r.Context())
+	hdr := txn.BrowserTimingHeader()
+	// BrowserTimingHeader() will always return a header whose methods can
+	// be safely called.
+	if js := hdr.WithTags(); js != nil {
+		w.Write(js)
+	}
 	defer txn.StartSegment("viewCartHandler").End()
+
 	log := r.Context().Value(ctxKeyLog{}).(logrus.FieldLogger)
 	log.Debug("view user cart")
 	currencies, err := fe.getCurrencies(r.Context())
@@ -339,6 +358,7 @@ func (fe *frontendServer) viewCartHandler(w http.ResponseWriter, r *http.Request
 func (fe *frontendServer) placeOrderHandler(w http.ResponseWriter, r *http.Request) {
 	txn := newrelic.FromContext(r.Context())
 	defer txn.StartSegment("placeOrderHandler").End()
+
 	log := r.Context().Value(ctxKeyLog{}).(logrus.FieldLogger)
 	log.Debug("placing order")
 
@@ -414,6 +434,7 @@ func (fe *frontendServer) placeOrderHandler(w http.ResponseWriter, r *http.Reque
 func (fe *frontendServer) logoutHandler(w http.ResponseWriter, r *http.Request) {
 	txn := newrelic.FromContext(r.Context())
 	defer txn.StartSegment("logoutHandler").End()
+
 	log := r.Context().Value(ctxKeyLog{}).(logrus.FieldLogger)
 	log.Debug("logging out")
 	for _, c := range r.Cookies() {
@@ -428,6 +449,7 @@ func (fe *frontendServer) logoutHandler(w http.ResponseWriter, r *http.Request) 
 func (fe *frontendServer) setCurrencyHandler(w http.ResponseWriter, r *http.Request) {
 	txn := newrelic.FromContext(r.Context())
 	defer txn.StartSegment("setCurrencyHandler").End()
+	
 	log := r.Context().Value(ctxKeyLog{}).(logrus.FieldLogger)
 	cur := r.FormValue("currency_code")
 	log.WithField("curr.new", cur).WithField("curr.old", currentCurrency(r)).
@@ -461,6 +483,12 @@ func (fe *frontendServer) chooseAd(ctx context.Context, ctxKeys []string, log lo
 
 func renderHTTPError(log logrus.FieldLogger, r *http.Request, w http.ResponseWriter, err error, code int) {
 	txn := newrelic.FromContext(r.Context())
+	hdr := txn.BrowserTimingHeader()
+	// BrowserTimingHeader() will always return a header whose methods can
+	// be safely called.
+	if js := hdr.WithTags(); js != nil {
+		w.Write(js)
+	}
 	defer txn.StartSegment("renderHTTPError").End()
 	log.WithField("error", err).Error("request error")
 	errMsg := fmt.Sprintf("%+v", err)
